@@ -5,7 +5,6 @@ from scipy.interpolate import CubicSpline
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 from statsmodels.tsa.stattools import adfuller, kpss
-from statsmodels.tsa.arima.model import ARIMA
 
 
 class DataProcessor:
@@ -141,93 +140,3 @@ class DataProcessor:
         plt.xlabel('Date')
         plt.ylabel('Price')
         plt.show()
-
-
-class Model:
-    def __init__(self, df):
-        self.df = df
-        self.model = None
-        self.results = None
-
-    def train_arima(self, order):
-        """Train ARIMA model on the data."""
-        self.model = ARIMA(self.df, order=order)
-        self.results = self.model.fit()
-
-    def forecast(self, steps):
-        """Forecast future values using trained ARIMA model."""
-        forecast = self.results.get_forecast(steps=steps)
-        mean_forecast = forecast.predicted_mean
-        confidence_intervals = forecast.conf_int()
-        return mean_forecast, confidence_intervals
-
-    def plot_forecast(self, mean_forecast, confidence_intervals):
-        """Plot the original data and the forecasted values with confidence intervals."""
-        plt.figure(figsize=(12, 5), dpi=100)
-        plt.plot(self.df, label='Historical Data')
-        plt.plot(mean_forecast, label='Forecasted Data')
-        plt.fill_between(confidence_intervals.index,
-                         confidence_intervals.iloc[:, 0],
-                         confidence_intervals.iloc[:, 1], color='k', alpha=0.2)
-        plt.title('ARIMA Forecast')
-        plt.xlabel('Date')
-        plt.ylabel('Natural Gas Prices')
-        plt.legend()
-        plt.show()
-
-    def get_forecast_for_date(self, date, steps, start_date):
-        """Get forecast for a specific date."""
-        forecast_index = pd.date_range(start=start_date, periods=steps, freq='D')
-        forecast = self.results.get_forecast(steps=steps)
-        mean_forecast = forecast_index.predicted_mean
-        forecast_series = pd.Series(mean_forecast, index=forecast_index)
-        return forecast_series.get(date, "Date out of forecast range.")
-
-
-def main():
-    # Load and preprocess data
-    processor = DataProcessor('Nat_Gas.csv')
-    processor.plot_data(processor.df)
-    processor.decompose_series()
-    processor.plot_rolling_statistics()
-
-    # Interpolate to daily data
-    daily_data = processor.spline_interpolation()
-    processor.plot_interpolation(daily_data)
-
-    # Make data stationary
-    stationary_data = processor.make_stationary()
-
-    # Train ARIMA model
-    model = Model(stationary_data)
-    arima_order = (1, 1, 1)
-    model.train_arima(order=arima_order)
-
-    # Get user import for the date
-    date_input = input("Enter the date for price estimation (YYYY-MM-DD:")
-    try:
-        date = pd.to_datetime(date_input)
-    except ValueError:
-        print("Invalid date format. Please enter in YYYY-MM-DD format.")
-        return
-
-    # Forecast steps based on how far into the future the date is
-    last_date = stationary_data.index[-1]
-    steps = (date.year - last_date.year) * 12 + (date.month - last_date.month)
-
-    # Get forecast for specified date
-    if steps > 0:
-        mean_forecast, _ = model.forecast(steps)
-        future_index = pd.date_range(start=last_date, periods=steps, freq='D')
-        future_data = pd.Series(mean_forecast, index=future_index)
-        daily_forecast = processor.spline_interpolation(future_data.to_frame('Prices'))
-        forecast_price = daily_forecast.get(date, "Date out of forecast range.")
-        print(f"Estimated price for {date_input}: {forecast_price}")
-    else:
-        daily_data = processor.spline_interpolation()
-        forecast_price = daily_data.get(date, "Date not found in the data.")
-        print(f"Price for {date_input}: {forecast_price}")
-
-
-if __name__ == "__main__":
-    main()
