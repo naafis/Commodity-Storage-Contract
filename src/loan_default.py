@@ -11,7 +11,6 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from imblearn.over_sampling import SMOTE
 import xgboost as xgb
 
-
 # Load raw data from csv
 loaners = pd.read_csv('Task_3_and_4_Loan_Data.csv')
 df = loaners.copy()
@@ -76,7 +75,7 @@ features_used = set()
 features_removed = set()
 
 for i in range(corr_matrix.shape[0]):
-    for j in range(i+1, corr_matrix.shape[1]):
+    for j in range(i + 1, corr_matrix.shape[1]):
         if corr_matrix.iloc[i, j] >= threshold or corr_matrix.iloc[i, j] <= -threshold:
             left_feature = corr_matrix.index[i]
             right_feature = corr_matrix.columns[j]
@@ -187,6 +186,7 @@ def plot_learning_curves(estimator, X, y, scoring='accuracy'):
              label='Cross-validation score')
     plt.legend(loc='best')
     plt.show()
+
 
 # PLot learning curves for XGBoost
 plot_learning_curves(xgb_model, X_train_balanced, y_train_balanced, scoring='roc_auc')
