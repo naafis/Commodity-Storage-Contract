@@ -1,24 +1,14 @@
 import pandas as pd
 import numpy as np
+from math import log
+
 
 # Load the dataset
-file_path = "Task_3_and_4_Loan_Data.csv"
-data = pd.read_csv(file_path)
-
-# Define bucket boundaries for the two ranges: 0-600 and 600-850
-bucket_boundaries_1 = np.linspace(0, 600, 6)
-bucket_boundaries_2 = np.linspace(600, 850, 6)
+def load_data(filepath):
+    return pd.read_csv(filepath)
 
 
-# Function to assign each FICO score to a bucket based on the new boundaries
-def assign_to_new_bucket(fico_score):
-    if fico_score <= 600:
-        return assign_to_bucket(fico_score, bucket_boundaries_1)
-    else:
-        return assign_to_bucket(fico_score, bucket_boundaries_2) + len(bucket_boundaries_1) - 1
-
-
-# Helper function to assign bucket based on boundaries
+# Assign each FICO score to a bucket based on the boundaries
 def assign_to_bucket(fico_score, boundaries):
     for i in range(len(boundaries) - 1):
         if boundaries[i] <= fico_score < boundaries[i + 1]:
@@ -26,28 +16,88 @@ def assign_to_bucket(fico_score, boundaries):
     return len(boundaries) - 2  # Assign to the last bucket if it doesn't fall in any
 
 
-# Assign each record to a new bucket
-data['new_bucket'] = data['fico_score'].apply(assign_to_new_bucket)
+# Function to calculate log-likelihood
+def log_likelihood(n, k):
+    if n == 0:
+        return 0
+    p = k / n
+    if p == 0 or p == 1:
+        return 0
+    return k * log(p) + (n - k) * log(1 - p)
 
-# Calculate the number of records and defaults in each new bucket
-new_bucket_stats = data.groupby('new_bucket').agg(
-    total_records=('default', 'size'),
-    total_defaults=('default', 'sum')
-)
 
-# Calculate the probability of default for each new bucket
-new_bucket_stats['probability_of_default'] = new_bucket_stats['total_defaults'] / new_bucket_stats['total_records']
+# Dynamic Programming function to find the optimal bucket boundaries
+def find_optimal_buckets(defaults, totals, r):
+    max_fico = len(defaults)
+    dp = [[[-10 ** 18, 0] for _ in range(max_fico)] for _ in range(r + 1)]
 
-# Calculate the log-likelihood for the new bucket setup
-new_bucket_stats['log_likelihood'] = new_bucket_stats.apply(
-    lambda row: row['total_defaults'] * np.log(row['probability_of_default']) +
-                (row['total_records'] - row['total_defaults']) * np.log(1 - row['probability_of_default']),
-    axis=1
-)
+    for i in range(r + 1):
+        for j in range(max_fico):
+            if i == 0:
+                dp[i][j][0] = 0
+            else:
+                for k in range(j):
+                    if totals[j] == totals[k]:
+                        continue
+                    current_ll = log_likelihood(totals[j] - totals[k], defaults[j] - defaults[k])
+                    if i == 1:
+                        dp[i][j][0] = current_ll
+                    else:
+                        new_ll = dp[i - 1][k][0] + current_ll
+                        if dp[i][j][0] < new_ll:
+                            dp[i][j][0] = new_ll
+                            dp[i][j][1] = k
 
-# Calculate the total log-likelihood
-new_total_log_likelihood = new_bucket_stats['log_likelihood'].sum()
+    # Extract bucket boundaries
+    boundaries = []
+    k = max_fico - 1
+    while r >= 0:
+        boundaries.append(k + 300)
+        k = dp[r][k][1]
+        r -= 1
 
-# Output the results
-print(new_bucket_stats)
-print(f"Total Log-Likelihood: {new_total_log_likelihood}")
+    boundaries.reverse()
+    return dp[-1][-1][0], boundaries
+
+
+def main():
+    # File path for the dataset
+    file_path = 'Task_3_and_4_Loan_Data.csv'
+
+    # Load data
+    df = load_data(file_path)
+
+    # Extract FICO scores and default status
+    fico_scores = df['fico_score'].to_list()
+    defaults = df['default'].to_list()
+    n = len(fico_scores)
+
+    # Initialize counts for default and total records
+    max_fico = 851
+    default = [0] * max_fico
+    total = [0] * max_fico
+
+    # Count defaults and totals for each FICO score
+    for i in range(n):
+        score = int(fico_scores[i])
+        default[score - 300] += defaults[i]
+        total[score - 300] += 1
+
+    # Compute cumulative defaults and totals
+    for i in range(1, max_fico):
+        default[i] += default[i - 1]
+        total[i] += total[i - 1]
+
+    # Define number of buckets
+    num_buckets = 10
+
+    # Find the optimal bucket boundaries
+    max_log_likelihood, optimal_boundaries = find_optimal_buckets(default, total, num_buckets)
+
+    # Output the results
+    print(f"Maximum Log-Likelihood: {max_log_likelihood:.4f}")
+    print("Optimal Bucket Boundaries:", optimal_boundaries)
+
+
+if __name__ == "__main__":
+    main()
